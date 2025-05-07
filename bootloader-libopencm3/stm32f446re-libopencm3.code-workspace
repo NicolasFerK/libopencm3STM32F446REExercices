@@ -1,0 +1,18 @@
+{
+	"folders": [
+		{
+			"path": "../stm32f446re-libopencm3"
+		},
+		{
+			"name": "bootloader-libopencm3",
+			"path": "."
+		}
+	],
+	"settings": {
+		"files.associations": {
+			"timer.h": "c",
+			"stdbool.h": "c",
+			"gpio.h": "c"
+		}
+	}
+}

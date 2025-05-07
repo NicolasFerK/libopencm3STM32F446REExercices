@@ -9,6 +9,17 @@
 #define SWCLOCK_PORT    (GPIOC)
 #define SWCLOCK_PIN     (GPIO1)
 
+typedef struct _swd_req
+{
+    uint8_t start : 1;  // This bit is always 1
+    uint8_t APnDP : 1;  // This bis it 0 for DPACC and 1 for APACC
+    uint8_t RnW : 1;    // This bit is 0 for Write and 1 for Read
+    uint8_t A : 2;      // Has different meaning based on if AP is selected or DP.
+    uint8_t parity : 1; // This parity check is done on APnDP,RnW,A bits; If no of 1s is even, parity is 0
+    uint8_t stop : 1;   // This bit must be 0 for synchronous SWD, which means always.
+    uint8_t park : 1;   // This bit must be 1.
+} swd_req;
+
 void gpio_setup(void)
 {
     rcc_periph_clock_enable(RCC_GPIOC);
@@ -28,7 +39,7 @@ void swdio_write(bool high)
     }
 }
 //LE ESTADO SWDIO PC0
-bool swdio_read()
+bool swdio_read(bool high)
 {
 
 }

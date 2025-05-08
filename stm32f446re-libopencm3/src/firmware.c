@@ -1,5 +1,6 @@
 #include <libopencm3/stm32/gpio.h>
 #include <libopencm3/stm32/rcc.h>
+#include <libopencm3/stm32/usart.h>
 #include <libopencm3/cm3/scb.h>
 #include <stdbool.h>
 
@@ -68,13 +69,10 @@ int main(void)
             timer_pwm_set_duty_cycle(duty_cycle);
             startTime = system_get_ticks();
         }
-            if(uart_data_available())
-            {
-                uint8_t data = uart_read_byte();
-                uart_write_byte(data + 1);
+                // uint16_t data = (uint16_t)usart_recv_blocking(USART2);
+                // usart_send_blocking(USART2, data+1);
                 //timer_pwm_set_duty_cycle(100);
 
-            }
             //system_delay(1000);
     }
     return 0;

@@ -1,5 +1,7 @@
 #include "crc8.h"
 
+volatile int x = 0;
+
 uint8_t crc8(uint8_t* data, uint32_t length)
 {
     uint8_t crc = 0;
@@ -19,7 +21,7 @@ uint8_t crc8(uint8_t* data, uint32_t length)
             }
             
         }
-        
+        x++;
     }
     
     return crc;

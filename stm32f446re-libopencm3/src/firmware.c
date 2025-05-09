@@ -47,6 +47,7 @@ int main(void)
     uint64_t startTime = system_get_ticks();
     float duty_cycle = 0.0f;
     bool sentido = 1;
+
     timer_pwm_set_duty_cycle(duty_cycle);
 
     while(1)
@@ -69,9 +70,11 @@ int main(void)
             timer_pwm_set_duty_cycle(duty_cycle);
             startTime = system_get_ticks();
         }
-                // uint16_t data = (uint16_t)usart_recv_blocking(USART2);
-                // usart_send_blocking(USART2, data+1);
-                //timer_pwm_set_duty_cycle(100);
+            while (uart_data_available()) 
+            {
+                uint8_t data = uart_read_byte();
+                uart_write_byte(data + 1);
+            }
 
             //system_delay(1000);
     }

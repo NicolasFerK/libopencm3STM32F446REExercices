@@ -1,0 +1,18 @@
+{
+	"folders": [
+		{
+			"path": "../.."
+		},
+		{
+			"name": "bootloader-libopencm3",
+			"path": "../../bootloader-libopencm3"
+		},
+		{
+			"name": "stm32f446re-libopencm3",
+			"path": ".."
+		}
+	],
+	"settings": {
+		"mesonbuild.configureOnOpen": false
+	}
+}

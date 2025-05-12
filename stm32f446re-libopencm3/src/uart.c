@@ -16,6 +16,13 @@ void usart2_isr(void)
   const bool overrun_occurred = usart_get_flag(USART2, USART_FLAG_ORE) == 1;
   const bool received_data = usart_get_flag(USART2, USART_FLAG_RXNE) == 1;
 
+// if (usart_get_flag(USART2, USART_FLAG_RXNE))
+// {
+//   char c = usart_recv(USART2);
+//   usart_send(USART2, c);
+//   //usart_send(USART2, (uint16_t)c);
+// }
+
   if (received_data || overrun_occurred) 
   {
     if (!ring_buffer_write(&rb, (uint8_t)usart_recv(USART2))) 
@@ -27,18 +34,19 @@ void usart2_isr(void)
 
 void uart_setup(void) 
 {
-  ring_buffer_setup(&rb, data_buffer, RING_BUFFER_SIZE);
+  //ring_buffer_setup(&rb, data_buffer, RING_BUFFER_SIZE);
 
   rcc_periph_clock_enable(RCC_USART2);
+  usart_set_baudrate(USART2, BAUD_RATE);
+  usart_set_databits(USART2, 8);
+  usart_set_stopbits(USART2, USART_STOPBITS_1);
 
   usart_set_mode(USART2, USART_MODE_TX_RX);
+  usart_set_parity(USART2, USART_PARITY_NONE);
   usart_set_flow_control(USART2, USART_FLOWCONTROL_NONE);
-  usart_set_databits(USART2, 8);
-  usart_set_baudrate(USART2, BAUD_RATE);
-  usart_set_parity(USART2, 0);
-  usart_set_stopbits(USART2, 1);
 
   usart_enable_rx_interrupt(USART2);
+  //usart_enable_tx_interrupt(USART2);
   nvic_enable_irq(NVIC_USART2_IRQ);
 
   usart_enable(USART2);

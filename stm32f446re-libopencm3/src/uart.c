@@ -1,6 +1,7 @@
 #include <libopencm3/cm3/nvic.h>
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/usart.h>
+#include <libopencm3/stm32/gpio.h>
 
 #include "uart.h"
 #include "ring-buffer.h"
@@ -19,7 +20,7 @@ void usart2_isr(void)
 // if (usart_get_flag(USART2, USART_FLAG_RXNE))
 // {
 //   char c = usart_recv(USART2);
-//   usart_send(USART2, c);
+//   usart_send(USART2, c+1);
 //   //usart_send(USART2, (uint16_t)c);
 // }
 
@@ -33,23 +34,35 @@ void usart2_isr(void)
 }
 
 void uart_setup(void) 
-{
-  //ring_buffer_setup(&rb, data_buffer, RING_BUFFER_SIZE);
+{  
 
-  rcc_periph_clock_enable(RCC_USART2);
-  usart_set_baudrate(USART2, BAUD_RATE);
-  usart_set_databits(USART2, 8);
-  usart_set_stopbits(USART2, USART_STOPBITS_1);
+  ring_buffer_setup(&rb, data_buffer, RING_BUFFER_SIZE);
+	/* Enable the USART2 interrupt. */
+	nvic_enable_irq(NVIC_USART2_IRQ);
 
-  usart_set_mode(USART2, USART_MODE_TX_RX);
-  usart_set_parity(USART2, USART_PARITY_NONE);
-  usart_set_flow_control(USART2, USART_FLOWCONTROL_NONE);
+  gpio_mode_setup(GPIOA, GPIO_MODE_AF, GPIO_PUPD_NONE, GPIO2);
 
-  usart_enable_rx_interrupt(USART2);
-  //usart_enable_tx_interrupt(USART2);
-  nvic_enable_irq(NVIC_USART2_IRQ);
+	/* Setup GPIO pins for USART2 receive. */
+	gpio_mode_setup(GPIOA, GPIO_MODE_AF, GPIO_PUPD_NONE, GPIO3);
+	gpio_set_output_options(GPIOA, GPIO_OTYPE_OD, GPIO_OSPEED_25MHZ, GPIO3);
 
-  usart_enable(USART2);
+	/* Setup USART2 TX and RX pin as alternate function. */
+	gpio_set_af(GPIOA, GPIO_AF7, GPIO2);
+	gpio_set_af(GPIOA, GPIO_AF7, GPIO3);
+
+	/* Setup USART2 parameters. */
+	usart_set_baudrate(USART2, 115200);
+	usart_set_databits(USART2, 8);
+	usart_set_stopbits(USART2, USART_STOPBITS_1);
+	usart_set_mode(USART2, USART_MODE_TX_RX);
+	usart_set_parity(USART2, USART_PARITY_NONE);
+	usart_set_flow_control(USART2, USART_FLOWCONTROL_NONE);
+
+	/* Enable USART2 Receive interrupt. */
+	usart_enable_rx_interrupt(USART2);
+
+	/* Finally enable the USART. */
+	usart_enable(USART2);
 }
 
 void uart_teardown(void) 

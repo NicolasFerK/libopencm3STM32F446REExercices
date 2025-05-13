@@ -19,7 +19,7 @@
 
 
 #define LED_PERIOD (10)
-#define INCREASING_CONSTANT .5
+#define INCREASING_CONSTANT 1
 
 static void vector_setup(void)
 {
@@ -29,11 +29,14 @@ static void vector_setup(void)
 static void gpio_setup(void)
 {
     rcc_periph_clock_enable(RCC_GPIOA);
+    rcc_periph_clock_enable(RCC_USART2);
     gpio_mode_setup(LED_PORT, GPIO_MODE_AF, GPIO_PUPD_NONE, LED_PIN);
     gpio_set_af(LED_PORT, GPIO_AF1, LED_PIN);
+//   gpio_mode_setup(LED_PORT, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, LED_PIN);
+    // gpio_set_af(LED_PORT, GPIO_AF1, LED_PIN);
 
-    gpio_mode_setup(UART_PORT, GPIO_MODE_AF, GPIO_PUPD_NONE, UART_TX_PIN | UART_RX_PIN);
-    gpio_set_af(UART_PORT, GPIO_AF7, UART_TX_PIN | UART_RX_PIN);
+    // gpio_mode_setup(UART_PORT, GPIO_MODE_AF, GPIO_PUPD_NONE, UART_TX_PIN | UART_RX_PIN);
+    // gpio_set_af(UART_PORT, GPIO_AF7, UART_TX_PIN | UART_RX_PIN);
 }
 
 int main(void)
@@ -77,6 +80,7 @@ int main(void)
             }
 
             //system_delay(1000);
+            
     }
     return 0;
 }

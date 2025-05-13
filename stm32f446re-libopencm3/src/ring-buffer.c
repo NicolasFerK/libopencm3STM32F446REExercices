@@ -40,3 +40,4 @@ bool ring_buffer_write(ring_buffer_t* rb, uint8_t byte) {
   rb->write_index = next_write_index;
   return true;
 }
+

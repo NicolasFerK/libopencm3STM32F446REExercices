@@ -1,0 +1,12 @@
+{
+	"folders": [
+		{
+			"path": "../.."
+		},
+		{
+			"name": "UARTSTM32F446RE",
+			"path": ".."
+		}
+	],
+	"settings": {}
+}

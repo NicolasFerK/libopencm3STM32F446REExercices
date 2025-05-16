@@ -10,11 +10,11 @@
 
 void tim2_isr(void)
 {
-    if(timer_get_flag(TIM2, TIM_SR_CC1IF))
+    if (timer_get_flag(TIM2, TIM_SR_CC1IF))
     {
         timer_clear_flag(TIM2, TIM_SR_CC1IF);
         uint16_t compare_time = timer_get_counter(TIM2);
-        timer_set_oc_value(TIM2, TIM_OC1, compare_time+2500);
+        timer_set_oc_value(TIM2, TIM_OC1, compare_time + 2500);
 
         gpio_toggle(LED_PORT, LED_PIN);
     }
@@ -22,14 +22,14 @@ void tim2_isr(void)
 
 void gpio_setup(void)
 {
-    gpio_mode_setup(LED_PORT, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, LED_PIN); //LED - OUTPUT
-    gpio_mode_setup(UART_PORT, GPIO_MODE_AF, GPIO_PUPD_NONE, TX_PIN);     //TX  - TRANSMISSOR
-    gpio_mode_setup(UART_PORT, GPIO_MODE_AF, GPIO_PUPD_NONE, RX_PIN);     //RX  - RECEPTOR
+    gpio_mode_setup(LED_PORT, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, LED_PIN); // LED - OUTPUT
+    gpio_mode_setup(UART_PORT, GPIO_MODE_AF, GPIO_PUPD_NONE, TX_PIN);     // TX  - TRANSMISSOR
+    gpio_mode_setup(UART_PORT, GPIO_MODE_AF, GPIO_PUPD_NONE, RX_PIN);     // RX  - RECEPTOR
 
-    gpio_set_af(UART_PORT, GPIO_AF7, TX_PIN); //TX COMO FUNCÃO ALTERNATIVA 7
-    gpio_set_af(UART_PORT, GPIO_AF7, RX_PIN); //RX COMO FUNÇÃO ALTERNATIVA 7
+    gpio_set_af(UART_PORT, GPIO_AF7, TX_PIN); // TX COMO FUNCÃO ALTERNATIVA 7
+    gpio_set_af(UART_PORT, GPIO_AF7, RX_PIN); // RX COMO FUNÇÃO ALTERNATIVA 7
 
-    gpio_set_output_options(UART_PORT, GPIO_OTYPE_OD, GPIO_OSPEED_25MHZ, RX_PIN); //SETAR O RX
+    gpio_set_output_options(UART_PORT, GPIO_OTYPE_OD, GPIO_OSPEED_25MHZ, RX_PIN); // SETAR O RX
 }
 
 void timer_setup(void)
@@ -46,7 +46,7 @@ void timer_setup(void)
 
     timer_set_period(TIM2, 65535);
     timer_set_oc_value(TIM2, TIM_OC1, 2500);
-    
+
     timer_enable_counter(TIM2);
     timer_enable_irq(TIM2, TIM_DIER_CC1IE);
 }

@@ -1,0 +1,12 @@
+{
+    "files.associations": {
+        "nvic.h": "c",
+        "uart.h": "c",
+        "gpio.h": "c",
+        "funcs.h": "c",
+        "common-defines.h": "c",
+        "usart.h": "c",
+        "rcc.h": "c",
+        "system.h": "c"
+    }
+}

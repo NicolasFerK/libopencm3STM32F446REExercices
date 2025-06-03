@@ -1,0 +1,22 @@
+{
+  "dependencies": {
+    "serialport": "^10.5.0",
+    "ts-node": "^10.9.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.50",
+    "@types/serialport": "^8.0.5",
+    "tsx": "^4.19.4",
+    "undici-types": "^7.10.0"
+  },
+  "name": "firmware-updater",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": ""
+}

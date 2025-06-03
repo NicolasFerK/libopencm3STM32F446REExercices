@@ -1,0 +1,11 @@
+{
+    "files.associations": {
+        "gpio.h": "c",
+        "nvic.h": "c",
+        "timer.h": "c",
+        "common-defines.h": "c",
+        "funcs.h": "c",
+        "uart.h": "c",
+        "ring-buffer.h": "c"
+    }
+}

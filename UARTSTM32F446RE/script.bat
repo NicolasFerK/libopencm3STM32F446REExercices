@@ -1,0 +1,1 @@
+C:\Users\nicol\.platformio\penv\Scripts\platformio.exe run --target clean & C:\Users\nicol\.platformio\penv\Scripts\platformio.exe run & C:/Python313/python.exe c:/Users/nicol/Documents/PlatformIO/Projects/UARTSTM32F446RE/pad-bootloader.py

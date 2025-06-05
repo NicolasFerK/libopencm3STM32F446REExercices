@@ -15,9 +15,9 @@ void tim2_isr(void)
     {
         timer_clear_flag(TIM2, TIM_SR_CC1IF);
         uint16_t compare_time = timer_get_counter(TIM2);
-        timer_set_oc_value(TIM2, TIM_OC1, compare_time + 10000);
+        timer_set_oc_value(TIM2, TIM_OC1, compare_time + 2500);
 
-        gpio_set(LED_PORT, LED_PIN);
+        gpio_toggle(LED_PORT, LED_PIN);
     }
 }
 
@@ -28,7 +28,7 @@ void timer_setup(void)
 
     // timer_set_mode(TIM2, TIM_CR1_CKD_CK_INT, TIM_CR1_CMS_EDGE, TIM_CR1_DIR_UP); NÃO É OBRIGATORIO PQ QUANDO RESETA O CLOCK ELE JA É SETADO
 
-    timer_set_prescaler(TIM2, ((rcc_apb1_frequency * 2) / 5000));
+    timer_set_prescaler(TIM2, ((rcc_apb1_frequency * 2) / 10000));
 
     timer_disable_preload(TIM2);
     timer_continuous_mode(TIM2);

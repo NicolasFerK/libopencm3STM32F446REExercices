@@ -30,15 +30,11 @@ const SYNC_SEQ = Buffer.from([0xC4,0x55,0x7E,0x10]);
 const DEFAULT_TIMEOUT = (5000);
 
 const BOOTLOADER_SIZE                   = (0x8000);
-const VECTOR_TABLE_SIZE                 = (0x1AC);
-const FIRMWARE_INFO_SIZE                = (10 * 4);
+const VECTOR_TABLE_SIZE                 = (0x1B0);
 
-const FWINFO_VALIDATE_FROM              = (VECTOR_TABLE_SIZE + FIRMWARE_INFO_SIZE);
 const FWINFO_SENTINEL_OFFSET            = (VECTOR_TABLE_SIZE + (0 * 4));
 const FWINFO_DEVICE_ID_OFFSET           = (VECTOR_TABLE_SIZE + (1 * 4));
-const FWINFO_VERSION_OFFSET             = (VECTOR_TABLE_SIZE + (2 * 4));
 const FWINFO_LENGTH_OFFSET              = (VECTOR_TABLE_SIZE + (3 * 4));
-const FWINFO_CRC32_OFFSET               = (VECTOR_TABLE_SIZE + (9 * 4));
 
 const crc8 = (data: Buffer | Array<number>) => 
   {
@@ -242,19 +238,20 @@ const syncWithBootloader = async (timeout = DEFAULT_TIMEOUT) => {
 }
 
 const main = async () => {
+  if(process.argv.length < 3) {
+    console.log("usage: fw-updater <signed firmware>");
+    process.exit(1);
+  }
+  
+  const firmwareFilename = process.argv[2];
+
   Logger.info(`Reading the firmware image...`);
-  const fwImage = await fs.readFile(path.join(process.cwd(), 'firmware.bin'))
-  .then(bin => bin.slice(BOOTLOADER_SIZE));
+  const fwImage = await fs.readFile(path.join(process.cwd(), firmwareFilename));
   const fwLength = fwImage.length;
   Logger.success(`Read firmware image (${fwLength} bytes)`);
+  Logger.info(`${path.join(process.cwd(), 'firmware.bin')}`);
 
-  Logger.success(`Injecting into firmware information section`);
-  fwImage.writeUInt32LE(fwLength, FWINFO_LENGTH_OFFSET);
-  fwImage.writeUInt32LE(0x00000001, FWINFO_VERSION_OFFSET); //VERSAO 1
   
-  const crcValue = crc32(fwImage.slice(FWINFO_VALIDATE_FROM), fwLength - (VECTOR_TABLE_SIZE + FIRMWARE_INFO_SIZE));
-  Logger.info(`Computed CRC value: 0x${crcValue.toString(16).padStart(8, '0')}`);
-  fwImage.writeUInt32LE(crcValue, FWINFO_CRC32_OFFSET);
 
   Logger.info('Attempting to sync with the bootloader');
   await syncWithBootloader();

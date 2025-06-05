@@ -245,6 +245,7 @@ const main = () => __awaiter(void 0, void 0, void 0, function* () {
         .then(bin => bin.slice(BOOTLOADER_SIZE));
     const fwLength = fwImage.length;
     Logger.success(`Read firmware image (${fwLength} bytes)`);
+    Logger.info(`${path.join(process.cwd(), 'firmware.bin')}`);
     Logger.success(`Injecting into firmware information section`);
     fwImage.writeUInt32LE(fwLength, FWINFO_LENGTH_OFFSET);
     fwImage.writeUInt32LE(0x00000001, FWINFO_VERSION_OFFSET); //VERSAO 1

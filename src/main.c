@@ -36,27 +36,17 @@ int main(void)
     gpio_setup();
     timer_setup();
     usart_setup();
-    // comms_packet_t packet2 = 
-    // {
-    //     .length = 9,
-    //     .data = {1, 2, 3, 4, 5, 6, 7, 8, 9, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff},
-    //     .crc = 0
-    // };
-    //uint8_t i = 0;
+
     while(1)
     {
-        // for (uint32_t i = 0; i < 10000; i++)
-        // {
-        //     __asm__("nop");
-        // }
         __asm__("nop");
-         //gpio_toggle(LED_PORT, LED_PIN);
+
         while(uart_data_available())
         {
             uint8_t data = uart_read_byte();
             uart_write_byte(data+2);
         }
-        //uart_write_byte('3');
+
         system_delay(2500);
     }
 

@@ -10,7 +10,9 @@ SECTIONS
  .text : {
   KEEP (*(.bootloader_section))
   *(.vectors)
+  . = ALIGN(16);
   KEEP (*(.firmware_info))
+  KEEP (*(.firmware_signature))
   *(.text*)
   . = ALIGN(4);
   *(.rodata*)

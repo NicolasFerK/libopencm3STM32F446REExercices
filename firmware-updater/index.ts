@@ -30,7 +30,7 @@ const SYNC_SEQ = Buffer.from([0xC4,0x55,0x7E,0x10]);
 const DEFAULT_TIMEOUT = (5000);
 
 const BOOTLOADER_SIZE                   = (0x8000);
-const VECTOR_TABLE_SIZE                 = (0x1B0);
+const VECTOR_TABLE_SIZE                 = (0x01B0);
 
 const FWINFO_SENTINEL_OFFSET            = (VECTOR_TABLE_SIZE + (0 * 4));
 const FWINFO_DEVICE_ID_OFFSET           = (VECTOR_TABLE_SIZE + (1 * 4));

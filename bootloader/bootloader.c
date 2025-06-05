@@ -109,91 +109,74 @@ static void jump_to_main(void)
     jump_fn();
 }
 
-static void aes_cbc_mac_step(AES_Block_t aes_state, AES_Block_t prev_state, const AES_Block_t *key_schedule)
-{
-    //The CBC Chaining Operation
-    for (uint8_t i = 0; i < AES_BLOCK_SIZE; i++)
-    {
-        ((uint8_t*)aes_state)[i] ^= ((uint8_t*)prev_state)[i];
-    }
+static void aes_cbc_mac_step(AES_Block_t aes_state, AES_Block_t prev_state, const AES_Block_t *key_schedule) {
+  // The CBC chaining operation
+  for (uint8_t i = 0; i < AES_BLOCK_SIZE; i++) {
+    ((uint8_t*)aes_state)[i] ^= ((uint8_t*)prev_state)[i];
+  }
 
-    AES_EncryptBlock(aes_state, key_schedule);
-    memcpy(prev_state, aes_state, AES_BLOCK_SIZE);
-    
+  AES_EncryptBlock(aes_state, key_schedule);
+  memcpy(prev_state, aes_state, AES_BLOCK_SIZE);
 }
 
-static bool validate_firmware_image(void) 
-{
-    firmware_info_t* firmware_info = (firmware_info_t*)FWINFO_ADDRESS;
-    const uint8_t* signature = (const uint8_t*)SIGNATURE_ADDRESS;
+static bool validate_firmware_image(void) {
+  firmware_info_t* firmware_info = (firmware_info_t*)FWINFO_ADDRESS;
+  const uint8_t* signature = (const uint8_t*)SIGNATURE_ADDRESS;
 
-    if(firmware_info->sentinel != FWINFO_SENTINEL)
-    {
-        return false;
+  if (firmware_info->sentinel != FWINFO_SENTINEL) {
+    return false;
+  }
+
+  if (firmware_info->device_id != DEVICE_ID) {
+    return false;
+  }
+
+  AES_Block_t round_keys[NUM_ROUND_KEYS_128];
+  AES_KeySchedule128(secret_key, round_keys);
+
+  AES_Block_t aes_state = {0};
+  AES_Block_t prev_state = {0};
+
+  uint8_t bytes_to_pad = 16 - (firmware_info->length % 16);
+  if (bytes_to_pad == 0) {
+    bytes_to_pad = 16;
+  }
+
+  memcpy(aes_state, firmware_info, AES_BLOCK_SIZE);
+  aes_cbc_mac_step(aes_state, prev_state, round_keys);
+
+  uint32_t offset = 0;
+  while (offset < firmware_info->length) {
+    // Are we are the point where we need to skip the info and signature sections?
+    if (offset == (FWINFO_ADDRESS - MAIN_APP_START_ADDRESS)) {
+      offset += AES_BLOCK_SIZE * 2;
+      continue;
     }
 
-    if(firmware_info->device_id != DEVICE_ID)
-    {
-        return false;
+    if (firmware_info->length - offset > AES_BLOCK_SIZE) {
+      // The regular case
+      memcpy(aes_state, (void*)(MAIN_APP_START_ADDRESS + offset), AES_BLOCK_SIZE);
+      aes_cbc_mac_step(aes_state, prev_state, round_keys);
+    } else {
+      // The case of padding
+      if (bytes_to_pad == 16) {
+        // Add a whole extra block of padding
+        memcpy(aes_state, (void*)(MAIN_APP_START_ADDRESS + offset), AES_BLOCK_SIZE);
+        aes_cbc_mac_step(aes_state, prev_state, round_keys);
+
+        memset(aes_state, AES_BLOCK_SIZE, AES_BLOCK_SIZE);
+        aes_cbc_mac_step(aes_state, prev_state, round_keys);
+      } else {
+        memcpy(aes_state, (void*)(MAIN_APP_START_ADDRESS + offset), AES_BLOCK_SIZE - bytes_to_pad);
+        memset((void*)(aes_state) + (AES_BLOCK_SIZE - bytes_to_pad), bytes_to_pad, bytes_to_pad);
+        aes_cbc_mac_step(aes_state, prev_state, round_keys);
+      }
     }
 
-    AES_Block_t round_keys[NUM_ROUND_KEYS_128];
-    AES_KeySchedule128(secret_key, round_keys);
+    offset += AES_BLOCK_SIZE;
+  }
 
-    AES_Block_t aes_state = {0};
-    AES_Block_t prev_state = {0};
-
-    uint8_t bytes_to_pad = 16 - (firmware_info->length % 16);
-
-    if(!bytes_to_pad) {
-        bytes_to_pad = 16;
-    }
-
-    memcpy(aes_state, firmware_info, AES_BLOCK_SIZE);
-    aes_cbc_mac_step(aes_state, prev_state, round_keys);
-
-    uint32_t offset = 0;
-    while(offset < firmware_info->length)
-    {
-        //Are we in the point where we need to skip the info and signature sections?
-        if(offset == (FWINFO_ADDRESS - MAIN_APP_START_ADDRESS))
-        {
-            offset += AES_BLOCK_SIZE * 2;
-            continue;
-        }
-
-
-        // Are we at the last block?
-        if(firmware_info->length - offset > AES_BLOCK_SIZE)
-        {
-            //The regular case
-            memcpy(aes_state, (void*)(MAIN_APP_START_ADDRESS + offset), AES_BLOCK_SIZE);
-            aes_cbc_mac_step(aes_state, prev_state, round_keys);
-        }
-        else
-        {
-            //The case of padding 
-            if(bytes_to_pad == 16)
-            {
-                // Add a whole extra block of padding
-                memcpy(aes_state, (void*)(MAIN_APP_START_ADDRESS + offset), AES_BLOCK_SIZE);
-                aes_cbc_mac_step(aes_state, prev_state, round_keys);
-                
-                memset(aes_state, AES_BLOCK_SIZE, AES_BLOCK_SIZE);
-                aes_cbc_mac_step(aes_state, prev_state, round_keys);
-            }
-            else
-            {
-                memcpy(aes_state, (void*)(MAIN_APP_START_ADDRESS + offset), AES_BLOCK_SIZE - bytes_to_pad);
-                memset((void*)(aes_state) + (AES_BLOCK_SIZE - bytes_to_pad), bytes_to_pad, bytes_to_pad);
-            }    
-        }
-        offset += AES_BLOCK_SIZE;
-    }   
-
-    //signature check
-
-    return memcmp(signature, aes_state, AES_BLOCK_SIZE);
+  return memcmp(signature, aes_state, AES_BLOCK_SIZE) == 0;
 }
 
 void usart_setup(void)
@@ -305,6 +288,7 @@ gpio_bootloader_setup();
 system_setup();
 usart_setup();
 comms_setup();
+
 
 simple_timer_setup(&timer1, DEFAULT_TIMEOUT, false); 
 
@@ -1015,12 +999,12 @@ void AES_RotWord(AES_Column_t word) {
   word[3] = temp;
 }
 
-void AES_SubBytes(AES_Block_t state, const uint8_t table[]) {
+void AES_SubBytes(AES_Block_t AES_SubBytesState, const uint8_t table[]) {
   uint8_t index;
   for (size_t col = 0; col < 4; col++) {
     for  (size_t row = 0; row < 4; row++) {
-      index = state[col][row];
-      state[col][row] = table[index];
+      index = AES_SubBytesState[col][row];
+      AES_SubBytesState[col][row] = table[index];
     }
   }
 }
@@ -1033,7 +1017,7 @@ void AES_SubWord(AES_Column_t word, const uint8_t table[]) {
   }
 }
 
-void AES_ShiftRows(AES_Block_t state) {
+void AES_ShiftRows(AES_Block_t AES_ShiftRowsState) {
   uint8_t temp0;
   uint8_t temp1;
 
@@ -1042,131 +1026,131 @@ void AES_ShiftRows(AES_Block_t state) {
 
   // Shift row 1
   // [0] [1] [2] [3] -> [1] [2] [3] [0]
-  temp0 = state[0][1];
-  state[0][1] = state[1][1];
-  state[1][1] = state[2][1];
-  state[2][1] = state[3][1];
-  state[3][1] = temp0;
+  temp0 = AES_ShiftRowsState[0][1];
+  AES_ShiftRowsState[0][1] = AES_ShiftRowsState[1][1];
+  AES_ShiftRowsState[1][1] = AES_ShiftRowsState[2][1];
+  AES_ShiftRowsState[2][1] = AES_ShiftRowsState[3][1];
+  AES_ShiftRowsState[3][1] = temp0;
 
   // Shift row 2
   // [0] [1] [2] [3] -> [2] [3] [0] [1]
-  temp0 = state[0][2];
-  temp1 = state[1][2];
-  state[0][2] = state[2][2];
-  state[1][2] = state[3][2];
-  state[2][2] = temp0;
-  state[3][2] = temp1;
+  temp0 = AES_ShiftRowsState[0][2];
+  temp1 = AES_ShiftRowsState[1][2];
+  AES_ShiftRowsState[0][2] = AES_ShiftRowsState[2][2];
+  AES_ShiftRowsState[1][2] = AES_ShiftRowsState[3][2];
+  AES_ShiftRowsState[2][2] = temp0;
+  AES_ShiftRowsState[3][2] = temp1;
 
   // Shift row 3
   // [0] [1] [2] [3] -> [3] [0] [1] [2]
-  temp0 = state[3][3];
-  state[3][3] = state[2][3];
-  state[2][3] = state[1][3];
-  state[1][3] = state[0][3];
-  state[0][3] = temp0;
+  temp0 = AES_ShiftRowsState[3][3];
+  AES_ShiftRowsState[3][3] = AES_ShiftRowsState[2][3];
+  AES_ShiftRowsState[2][3] = AES_ShiftRowsState[1][3];
+  AES_ShiftRowsState[1][3] = AES_ShiftRowsState[0][3];
+  AES_ShiftRowsState[0][3] = temp0;
 }
 
-void AES_InvShiftRows(AES_Block_t state) {
+void AES_InvShiftRows(AES_Block_t AES_InvShiftRowsState) {
   uint8_t temp0;
   uint8_t temp1;
 
   // Shift row 1
   // [0] [1] [2] [3] -> [3] [0] [1] [2]
-  temp0 = state[3][1];
-  state[3][1] = state[2][1];
-  state[2][1] = state[1][1];
-  state[1][1] = state[0][1];
-  state[0][1] = temp0;
+  temp0 = AES_InvShiftRowsState[3][1];
+  AES_InvShiftRowsState[3][1] = AES_InvShiftRowsState[2][1];
+  AES_InvShiftRowsState[2][1] = AES_InvShiftRowsState[1][1];
+  AES_InvShiftRowsState[1][1] = AES_InvShiftRowsState[0][1];
+  AES_InvShiftRowsState[0][1] = temp0;
 
   // Shift row 2
   // [0] [1] [2] [3] -> [2] [3] [0] [1]
-  temp0 = state[0][2];
-  temp1 = state[1][2];
-  state[0][2] = state[2][2];
-  state[1][2] = state[3][2];
-  state[2][2] = temp0;
-  state[3][2] = temp1;
+  temp0 = AES_InvShiftRowsState[0][2];
+  temp1 = AES_InvShiftRowsState[1][2];
+  AES_InvShiftRowsState[0][2] = AES_InvShiftRowsState[2][2];
+  AES_InvShiftRowsState[1][2] = AES_InvShiftRowsState[3][2];
+  AES_InvShiftRowsState[2][2] = temp0;
+  AES_InvShiftRowsState[3][2] = temp1;
 
   // Shift row 3
   // [0] [1] [2] [3] -> [1] [2] [3] [0]
-  temp0 = state[0][3];
-  state[0][3] = state[1][3];
-  state[1][3] = state[2][3];
-  state[2][3] = state[3][3];
-  state[3][3] = temp0;
+  temp0 = AES_InvShiftRowsState[0][3];
+  AES_InvShiftRowsState[0][3] = AES_InvShiftRowsState[1][3];
+  AES_InvShiftRowsState[1][3] = AES_InvShiftRowsState[2][3];
+  AES_InvShiftRowsState[2][3] = AES_InvShiftRowsState[3][3];
+  AES_InvShiftRowsState[3][3] = temp0;
 }
 
-void AES_MixColumns(AES_Block_t state) {
+void AES_MixColumns(AES_Block_t AES_MixColumnsState) {
   AES_Column_t temp = { 0 };
 
   for (size_t i = 0; i < 4; i++) {
-    temp[0] = GF_Mult(0x02, state[i][0]) ^ GF_Mult(0x03, state[i][1]) ^ state[i][2] ^ state[i][3];
-    temp[1] = state[i][0] ^ GF_Mult(0x02, state[i][1]) ^ GF_Mult(0x03, state[i][2]) ^ state[i][3];
-    temp[2] = state[i][0] ^ state[i][1] ^ GF_Mult(0x02, state[i][2]) ^ GF_Mult(0x03, state[i][3]);
-    temp[3] = GF_Mult(0x03, state[i][0]) ^ state[i][1] ^ state[i][2] ^ GF_Mult(0x02, state[i][3]);
+    temp[0] = GF_Mult(0x02, AES_MixColumnsState[i][0]) ^ GF_Mult(0x03, AES_MixColumnsState[i][1]) ^ AES_MixColumnsState[i][2] ^ AES_MixColumnsState[i][3];
+    temp[1] = AES_MixColumnsState[i][0] ^ GF_Mult(0x02, AES_MixColumnsState[i][1]) ^ GF_Mult(0x03, AES_MixColumnsState[i][2]) ^ AES_MixColumnsState[i][3];
+    temp[2] = AES_MixColumnsState[i][0] ^ AES_MixColumnsState[i][1] ^ GF_Mult(0x02, AES_MixColumnsState[i][2]) ^ GF_Mult(0x03, AES_MixColumnsState[i][3]);
+    temp[3] = GF_Mult(0x03, AES_MixColumnsState[i][0]) ^ AES_MixColumnsState[i][1] ^ AES_MixColumnsState[i][2] ^ GF_Mult(0x02, AES_MixColumnsState[i][3]);
 
-    state[i][0] = temp[0]; state[i][1] = temp[1]; state[i][2] = temp[2]; state[i][3] = temp[3];
+    AES_MixColumnsState[i][0] = temp[0]; AES_MixColumnsState[i][1] = temp[1]; AES_MixColumnsState[i][2] = temp[2]; AES_MixColumnsState[i][3] = temp[3];
   }
 }
 
-void AES_InvMixColumns(AES_Block_t state) {
+void AES_InvMixColumns(AES_Block_t AES_InvMixColumnsState) {
   AES_Column_t temp = { 0 };
 
   for (size_t i = 0; i < 4; i++) {
-    temp[0] = GF_Mult(0x0e, state[i][0]) ^ GF_Mult(0x0b, state[i][1]) ^ GF_Mult(0x0d, state[i][2]) ^ GF_Mult(0x09, state[i][3]);
-    temp[1] = GF_Mult(0x09, state[i][0]) ^ GF_Mult(0x0e, state[i][1]) ^ GF_Mult(0x0b, state[i][2]) ^ GF_Mult(0x0d, state[i][3]);
-    temp[2] = GF_Mult(0x0d, state[i][0]) ^ GF_Mult(0x09, state[i][1]) ^ GF_Mult(0x0e, state[i][2]) ^ GF_Mult(0x0b, state[i][3]);
-    temp[3] = GF_Mult(0x0b, state[i][0]) ^ GF_Mult(0x0d, state[i][1]) ^ GF_Mult(0x09, state[i][2]) ^ GF_Mult(0x0e, state[i][3]);
+    temp[0] = GF_Mult(0x0e, AES_InvMixColumnsState[i][0]) ^ GF_Mult(0x0b, AES_InvMixColumnsState[i][1]) ^ GF_Mult(0x0d, AES_InvMixColumnsState[i][2]) ^ GF_Mult(0x09, AES_InvMixColumnsState[i][3]);
+    temp[1] = GF_Mult(0x09, AES_InvMixColumnsState[i][0]) ^ GF_Mult(0x0e, AES_InvMixColumnsState[i][1]) ^ GF_Mult(0x0b, AES_InvMixColumnsState[i][2]) ^ GF_Mult(0x0d, AES_InvMixColumnsState[i][3]);
+    temp[2] = GF_Mult(0x0d, AES_InvMixColumnsState[i][0]) ^ GF_Mult(0x09, AES_InvMixColumnsState[i][1]) ^ GF_Mult(0x0e, AES_InvMixColumnsState[i][2]) ^ GF_Mult(0x0b, AES_InvMixColumnsState[i][3]);
+    temp[3] = GF_Mult(0x0b, AES_InvMixColumnsState[i][0]) ^ GF_Mult(0x0d, AES_InvMixColumnsState[i][1]) ^ GF_Mult(0x09, AES_InvMixColumnsState[i][2]) ^ GF_Mult(0x0e, AES_InvMixColumnsState[i][3]);
 
-    state[i][0] = temp[0]; state[i][1] = temp[1]; state[i][2] = temp[2]; state[i][3] = temp[3];
+    AES_InvMixColumnsState[i][0] = temp[0]; AES_InvMixColumnsState[i][1] = temp[1]; AES_InvMixColumnsState[i][2] = temp[2]; AES_InvMixColumnsState[i][3] = temp[3];
   }
 }
 
-void AES_AddRoundKey(AES_Block_t state, const AES_Block_t roundKey) {
+void AES_AddRoundKey(AES_Block_t AES_AddRoundKeyState, const AES_Block_t roundKey) {
   for (size_t col = 0; col < 4; col++) {
     for  (size_t row = 0; row < 4; row++) {
-      state[col][row] ^= roundKey[col][row];
+      AES_AddRoundKeyState[col][row] ^= roundKey[col][row];
     }
   }
 }
 
-void AES_EncryptBlock(AES_Block_t state, const AES_Block_t* keySchedule) {
+void AES_EncryptBlock(AES_Block_t AES_EncryptBlockState, const AES_Block_t* keySchedule) {
   AES_Block_t* roundKey = (AES_Block_t*)keySchedule;
 
   // Initial round key addition
-  AES_AddRoundKey(state, *roundKey++);
+  AES_AddRoundKey(AES_EncryptBlockState, *roundKey++);
 
   // Note that i starts at 1 since the initial round key is applied already
   for (size_t i = 1; i < NUM_ROUND_KEYS_128; i++) {
-    AES_SubBytes(state, sbox_encrypt);
-    AES_ShiftRows(state);
+    AES_SubBytes(AES_EncryptBlockState, sbox_encrypt);
+    AES_ShiftRows(AES_EncryptBlockState);
 
     // No column mix in the last round. Not that this implementation should be considered for
     // production, but this would constitute a timing based side-channel risk
     if (i < NUM_ROUND_KEYS_128 - 1) {
-      AES_MixColumns(state);
+      AES_MixColumns(AES_EncryptBlockState);
     }
 
-    AES_AddRoundKey(state, *roundKey++);
+    AES_AddRoundKey(AES_EncryptBlockState, *roundKey++);
   }
 }
 
-void AES_DecryptBlock(AES_Block_t state, const AES_Block_t* keySchedule) {
+void AES_DecryptBlock(AES_Block_t AES_DecryptBlockState, const AES_Block_t* keySchedule) {
   AES_Block_t* roundKey = (AES_Block_t*)keySchedule + NUM_ROUND_KEYS_128 - 1;
 
   // Note that i starts at 1 since the initial round key is applied already
   for (size_t i = 1; i < NUM_ROUND_KEYS_128; i++) {
-    AES_AddRoundKey(state, *roundKey--);
+    AES_AddRoundKey(AES_DecryptBlockState, *roundKey--);
 
     // No column mix in the first round
     if (i != 1) {
-      AES_InvMixColumns(state);
+      AES_InvMixColumns(AES_DecryptBlockState);
     }
 
-    AES_InvShiftRows(state);
-    AES_SubBytes(state, sbox_decrypt);
+    AES_InvShiftRows(AES_DecryptBlockState);
+    AES_SubBytes(AES_DecryptBlockState, sbox_decrypt);
   }
 
   // Last key addition
-  AES_AddRoundKey(state, *roundKey);
+  AES_AddRoundKey(AES_DecryptBlockState, *roundKey);
 }

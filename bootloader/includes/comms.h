@@ -20,7 +20,8 @@
 #define BL_PACKET_READY_FOR_DATA_DATA0         (0x48)
 #define BL_PACKET_UPDATE_SUCESSFUL_DATA0       (0x54)
 #define BL_PACKET_NACK_DATA0                   (0x59)
-
+#define BL_PACKET_IS_CRYPTED_FW_RES_DATA0      (0x66)
+#define BL_PACKET_IS_NOT_CRYPTED_FW_RES_DATA0  (0x67) 
 typedef struct comms_packet_t 
 {
 uint8_t length;

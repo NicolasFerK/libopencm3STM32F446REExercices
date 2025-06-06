@@ -78,6 +78,7 @@ typedef enum bl_state_t
 {
     BL_State_Sync,
     BL_State_WaitForUpdateReq,
+    BL_State_IsCryptedFWRes,
     BL_State_DeviceIDReq,
     BL_State_DeviceIDRes,
     BL_State_FWLengthReq,
@@ -93,6 +94,8 @@ static uint32_t bytes_written = 0;
 static uint8_t sync_seq[4] = {0};
 static simple_timer_t timer1;
 static comms_packet_t temp_packet;
+
+static bool isFWCrypted = 0;
 
 static const uint8_t secret_key[AES_BLOCK_SIZE] = {
     0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f
@@ -120,6 +123,12 @@ static void aes_cbc_mac_step(AES_Block_t aes_state, AES_Block_t prev_state, cons
 }
 
 static bool validate_firmware_image(void) {
+    if(isFWCrypted)
+    {
+
+    }
+    else
+    {
   firmware_info_t* firmware_info = (firmware_info_t*)FWINFO_ADDRESS;
   const uint8_t* signature = (const uint8_t*)SIGNATURE_ADDRESS;
 
@@ -177,6 +186,7 @@ static bool validate_firmware_image(void) {
   }
 
   return memcmp(signature, aes_state, AES_BLOCK_SIZE) == 0;
+    }
 }
 
 void usart_setup(void)
@@ -342,7 +352,7 @@ simple_timer_setup(&timer1, DEFAULT_TIMEOUT, false);
                         simple_timer_reset(&timer1);
                         comms_create_single_byte_packet(&temp_packet, BL_PACKET_FW_UPDATE_RES_DATA0);
                         comms_write(&temp_packet);
-                        stateBL = BL_State_DeviceIDReq;
+                        stateBL = BL_State_IsCryptedFWRes;
                     }
                     else
                     {
@@ -354,6 +364,29 @@ simple_timer_setup(&timer1, DEFAULT_TIMEOUT, false);
                     check_for_timeout();
                 }
             } break;
+            case BL_State_IsCryptedFWRes:
+            {
+                if(comms_packets_available())
+                {
+                    comms_read(&temp_packet);
+                    if(comms_is_single_byte_packet(&temp_packet, BL_PACKET_IS_CRYPTED_FW_RES_DATA0))
+                    {
+                        simple_timer_reset(&timer1);
+                        isFWCrypted = 1;
+                        stateBL = BL_State_DeviceIDReq;
+                    }
+                    else if(comms_is_single_byte_packet(&temp_packet, BL_PACKET_IS_NOT_CRYPTED_FW_RES_DATA0))
+                    {
+                        simple_timer_reset(&timer1);
+                        isFWCrypted = 0;
+                        stateBL = BL_State_DeviceIDReq;
+                    }
+                    else
+                    {
+                        bootloading_fail();
+                    }
+                }
+            }break;
             case BL_State_DeviceIDReq:
             {
                 simple_timer_reset(&timer1);

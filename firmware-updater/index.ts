@@ -20,8 +20,10 @@ const BL_PACKET_DEVICE_ID_RES_DATA0        =  0x3F;
 const BL_PACKET_FW_LENGTH_REQ_DATA0        =  0x42;
 const BL_PACKET_FW_LENGTH_RES_DATA0        =  0x45;
 const BL_PACKET_READY_FOR_DATA_DATA0       =  0x48;
-const BL_PACKET_UPDATE_SUCCESSFUL_DATA0     =  0x54;
+const BL_PACKET_UPDATE_SUCCESSFUL_DATA0    =  0x54;
 const BL_PACKET_NACK_DATA0                 =  0x59;
+const BL_PACKET_IS_CRYPTED_FW_RES_DATA0    =  0x66;
+const BL_PACKET_IS_NOT_CRYPTED_FW_RES_DATA0=  0x67;
 
 const serialPath                           = "COM14";
 const baudRate                             = 115200;
@@ -138,23 +140,19 @@ const uart = new SerialPort({ path: serialPath, baudRate });
 let packets: Packet[] = [];
 
 let lastPacket: Buffer = Packet.ack;
+
 const writePacket = (packet: Buffer) => {
   uart.write(packet);
   lastPacket = packet; 
 }
 
 let rxBuffer = Buffer.from([]);
+
 const consumeFromBuffer = (n: number) => {
   const consumed = rxBuffer.slice(0, n);
   rxBuffer = rxBuffer.slice(n);
   return consumed;
 }
-
-const pacoteTeste = new Packet(
-        9,
-        Buffer.from([1, 2, 3, 4, 5, 6, 7, 8, 9, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]),
-        127
-);
 
 uart.on('data', data => {
   rxBuffer = Buffer.concat([rxBuffer, data]);
@@ -238,20 +236,19 @@ const syncWithBootloader = async (timeout = DEFAULT_TIMEOUT) => {
 }
 
 const main = async () => {
-  if(process.argv.length < 3) {
+  if(process.argv.length < 4) {
     console.log("usage: fw-updater <signed firmware>");
     process.exit(1);
   }
   
   const firmwareFilename = process.argv[2];
+  const IsFirmwareCrypted = parseInt(process.argv[3], 2); //segundo argumento do comando vai ser 0 ou 1, 0 pra codigo normal e 1 pra codigo criptografado
 
   Logger.info(`Reading the firmware image...`);
   const fwImage = await fs.readFile(path.join(process.cwd(), firmwareFilename));
   const fwLength = fwImage.length;
   Logger.success(`Read firmware image (${fwLength} bytes)`);
   Logger.info(`${path.join(process.cwd(), 'firmware.bin')}`);
-
-  
 
   Logger.info('Attempting to sync with the bootloader');
   await syncWithBootloader();
@@ -264,6 +261,19 @@ const main = async () => {
   await waitForSingleBytePacket(BL_PACKET_FW_UPDATE_RES_DATA0);
   Logger.success('Firmware update request accepted');
   
+if(IsFirmwareCrypted) 
+{
+  Logger.info('Answering crypted firmware confirmation');
+  const IsFirmwareCryptedPacket = Packet.createSingleBytePacket(BL_PACKET_IS_CRYPTED_FW_RES_DATA0);
+  writePacket(IsFirmwareCryptedPacket.toBuffer());
+}
+else
+{
+  Logger.info('Answering not crypted firmware confirmation');
+  const IsFirmwareCryptedPacket = Packet.createSingleBytePacket(BL_PACKET_IS_NOT_CRYPTED_FW_RES_DATA0);
+  writePacket(IsFirmwareCryptedPacket.toBuffer());
+}
+
   Logger.info('Waiting for device ID request');
   await waitForSingleBytePacket(BL_PACKET_DEVICE_ID_REQ_DATA0);
   Logger.success('Device ID request received');

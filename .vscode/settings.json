@@ -12,7 +12,14 @@
         "ring-buffer.h": "c",
         "comms.h": "c",
         "timer.h": "c",
-        "gpio-pins.h": "c"
+        "gpio-pins.h": "c",
+        "firmware-info.h": "c",
+        "aes.h": "c",
+        "memorymap.h": "c",
+        "flash.h": "c",
+        "vector.h": "c",
+        "bl-flash.h": "c",
+        "systick.h": "c"
     },
     "C_Cpp.errorSquiggles": "disabled"
 }

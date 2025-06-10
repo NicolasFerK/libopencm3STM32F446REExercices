@@ -302,6 +302,7 @@ else
 
   let bytesWritten = 0;
  while (bytesWritten < fwLength) {
+    //await delay(250); //pra dar tempo de descriptografar parte do codigo por vez
     await waitForSingleBytePacket(BL_PACKET_READY_FOR_DATA_DATA0);
 
     const dataBytes = fwImage.slice(bytesWritten, bytesWritten + PACKET_DATA_BYTES);

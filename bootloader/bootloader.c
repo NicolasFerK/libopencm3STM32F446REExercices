@@ -69,6 +69,10 @@ static uint8_t sync_seq[4] = {0};
 static simple_timer_t timer1;
 static comms_packet_t temp_packet;
 
+static uint8_t prevBlock[AES_BLOCK_SIZE] = {0};
+static uint8_t dataToDecrypt[AES_BLOCK_SIZE];
+static uint8_t dataDecrypted[AES_BLOCK_SIZE]; 
+
 static bool isFWCrypted = 0;
 
 static const uint8_t secret_key[AES_BLOCK_SIZE] = {
@@ -97,14 +101,33 @@ static void aes_cbc_mac_step(AES_Block_t aes_state, AES_Block_t prev_state, cons
 }
 
 static void aes_cbc_mac_step_decrypt(AES_Block_t aes_state, AES_Block_t prev_state, const AES_Block_t *key_schedule) {
-  // The CBC chaining operation
+  AES_DecryptBlock(aes_state, key_schedule);  
   for (uint8_t i = 0; i < AES_BLOCK_SIZE; i++) {
-    ((uint8_t*)aes_state)[i] ^= ((uint8_t*)prev_state)[i];
+    ((uint8_t*)aes_state)[i] ^= ((uint8_t*)prev_state)[i];  
   }
-
-  AES_DecryptBlock(aes_state, key_schedule);
-  memcpy(prev_state, aes_state, AES_BLOCK_SIZE);
 }
+
+void descriptografarBlocoAtual(const uint8_t* data, const uint8_t* prev, const AES_Block_t* key_schedule, uint8_t* out, uint32_t offset)
+{
+    AES_Block_t aux;
+    AES_Block_t aes_state;
+    AES_Block_t prev_state;
+
+    memcpy(aux, data, sizeof(AES_Block_t));
+    memcpy(aes_state, aux, sizeof(AES_Block_t));
+
+     
+    if(offset >= (SIGNATURE_ADDRESS - MAIN_APP_START_ADDRESS) + sizeof(firmware_info_t)) 
+    {
+        memcpy(prev_state, prev, sizeof(AES_Block_t));
+        aes_cbc_mac_step_decrypt(aes_state, prev_state, key_schedule);
+    }
+    
+
+    memcpy(out, aes_state, sizeof(AES_Block_t));         
+
+}
+
 
 static bool validate_firmware_image(void) {
     firmware_info_t* firmware_info = (firmware_info_t*)FWINFO_ADDRESS;
@@ -118,6 +141,8 @@ static bool validate_firmware_image(void) {
         return false;
     }
 
+    if(isFWCrypted) return true;
+
     AES_Block_t round_keys[NUM_ROUND_KEYS_128];
     AES_KeySchedule128(secret_key, round_keys);
 
@@ -128,34 +153,6 @@ static bool validate_firmware_image(void) {
     
     uint8_t bytes_to_pad = 16 - (firmware_info->length % 16);
 
-    if(isFWCrypted)
-    {
-        uint32_t offset1 = 0;
-        while (offset1 <= firmware_info->length + bytes_to_pad) {
-            
-            if (offset1 == (FWINFO_ADDRESS - MAIN_APP_START_ADDRESS)) {
-                offset1 += AES_BLOCK_SIZE;
-                memcpy(prev_state, (void*)(MAIN_APP_START_ADDRESS + offset1), AES_BLOCK_SIZE); //prevstate = signature
-                for (uint8_t i = 0; i < AES_BLOCK_SIZE; i++) ((uint8_t*)prev_state)[i] = ((uint8_t*)prev_state)[i];
-                offset1 += AES_BLOCK_SIZE;
-                continue;
-            }
-
-            if (firmware_info->length + bytes_to_pad - offset1 >= AES_BLOCK_SIZE) {
-            memcpy(aes_state, (void*)(MAIN_APP_START_ADDRESS + offset1), AES_BLOCK_SIZE);
-            for (uint8_t i = 0; i < AES_BLOCK_SIZE; i++) ((uint8_t*)aes_state)[i] = ((uint8_t*)aes_state)[i];
-            }
-
-            if((memcmp(prev_state, aes_state, AES_BLOCK_SIZE) == 0) && (firmware_info->length + bytes_to_pad ==  offset1)) {
-                return memcmp(prev_state, aes_state, AES_BLOCK_SIZE) == 0;
-            }
-            offset1 += AES_BLOCK_SIZE;
-        }
-
-        return 0;
-    }
-    else
-    {
         if (bytes_to_pad == 0) {
             bytes_to_pad = 16;
         }
@@ -194,64 +191,6 @@ static bool validate_firmware_image(void) {
 
         return memcmp(signature, aes_state, AES_BLOCK_SIZE) == 0;
     }
-}
-
-static AES_Block_t decrypt_and_store(const comms_packet_t *packet, uint32_t offset2) 
-{
-    firmware_info_t* firmware_info = (firmware_info_t*)FWINFO_ADDRESS;
-
-    if (firmware_info->sentinel != FWINFO_SENTINEL) {   //DISPONÍVEL EM FIRMWARE-INFO.H
-        return false;
-    }
-
-    if (firmware_info->device_id != DEVICE_ID) {        //DISPONÍVEL EM FIRMWARE-INFO.H
-        return false;
-    }
-
-    AES_Block_t round_keys[NUM_ROUND_KEYS_128];
-    AES_KeySchedule128(secret_key, round_keys);
-
-    AES_Block_t aes_state = {0};
-    AES_Block_t prev_state = {0};
-
-    memcpy(aes_state, firmware_info, AES_BLOCK_SIZE);
-    
-    uint8_t bytes_to_pad = 16 - (firmware_info->length % 16);
-
-          if (bytes_to_pad == 0) {
-            bytes_to_pad = 16;
-        }
-        aes_cbc_mac_step_decrypt(aes_state, prev_state, round_keys);  //trocar por funcao que descriptografa
-
-            // Are we are the point where we need to skip the info and signature sections?
-            if(offset2 < (FWINFO_ADDRESS - MAIN_APP_START_ADDRESS)) return 0xff;
-            if (offset2 == (FWINFO_ADDRESS - MAIN_APP_START_ADDRESS)) {
-            offset2 += AES_BLOCK_SIZE * 2;
-            }
-
-            if (firmware_info->length - offset2 > AES_BLOCK_SIZE) {
-            // The regular case
-            memcpy(aes_state, packet, AES_BLOCK_SIZE);
-            aes_cbc_mac_step_decrypt(aes_state, prev_state, round_keys);  //trocar por funcao que descriptografa
-            memset(aes_state, packet, AES_BLOCK_SIZE);
-            } else {
-            // The case of padding
-            if (bytes_to_pad == 16) {
-                // Add a whole extra block of padding
-                memcpy(aes_state, packet, AES_BLOCK_SIZE);
-                aes_cbc_mac_step_decrypt(aes_state, prev_state, round_keys);  //trocar por funcao que descriptografa
-
-                memset(aes_state, AES_BLOCK_SIZE, AES_BLOCK_SIZE);
-                aes_cbc_mac_step_decrypt(aes_state, prev_state, round_keys);  //trocar por funcao que descriptografa
-            } else {
-                memcpy(aes_state, packet, AES_BLOCK_SIZE - bytes_to_pad);
-                memset(aes_state, packet, AES_BLOCK_SIZE - bytes_to_pad);
-                aes_cbc_mac_step_decrypt(aes_state, prev_state, round_keys);  //trocar por funcao que descriptografa
-                }
-            }
-
-        return aes_state;
-}
 
 static void bootloading_fail(void)
 {
@@ -370,6 +309,8 @@ simple_timer_setup(&timer1, DEFAULT_TIMEOUT, false);
         }
         comms_update();
 
+        AES_Block_t round_keys[NUM_ROUND_KEYS_128]; //round keys
+
         switch (stateBL)
         {
             case BL_State_WaitForUpdateReq:
@@ -458,6 +399,8 @@ simple_timer_setup(&timer1, DEFAULT_TIMEOUT, false);
                 if(comms_packets_available())
                 {
                     comms_read(&temp_packet);
+                    
+                    firmware_info_t* firmware_info = (firmware_info_t*)FWINFO_ADDRESS;
 
                     fw_length = 
                     (
@@ -466,6 +409,12 @@ simple_timer_setup(&timer1, DEFAULT_TIMEOUT, false);
                         (temp_packet.data[3] << 16) |
                         (temp_packet.data[4] << 24) 
                     );
+
+                    uint8_t bytes_to_pad = 16 - (firmware_info->length % 16);
+                    if (bytes_to_pad == 0) {
+                        bytes_to_pad = 16;
+                    }
+                    fw_length -= bytes_to_pad;
 
                     if(is_fw_length_packet(&temp_packet) && (fw_length <= MAX_FW_LENGTH))
                     {
@@ -489,6 +438,11 @@ simple_timer_setup(&timer1, DEFAULT_TIMEOUT, false);
                 simple_timer_reset(&timer1);
                 stateBL = BL_State_ReceiveFirmware;
                 offset = 0;
+                for (uint8_t i = 0; i < AES_BLOCK_SIZE; i++) prevBlock[i] = 0; //garante que o IV está zerado
+                //primeira vez que enviar um bloco, vai ter q ser o IV
+                
+                AES_KeySchedule128(secret_key, round_keys); 
+
                   
             } break;
             case BL_State_ReceiveFirmware:
@@ -500,28 +454,35 @@ simple_timer_setup(&timer1, DEFAULT_TIMEOUT, false);
                         if(isFWCrypted)
                         {
                             // LOGICA PARA DESCRIPTOGRAFAR DADO RECEBIDO
-                            const uint8_t packet_length = (temp_packet.length & 0x0f) + 1;
-                            AES_Block_t dataDecrypted = decrypt_and_store(&temp_packet, offset);
-                            offset += AES_BLOCK_SIZE;
-                            // IMPLEMENTAR X BYTES RECEBIDOS NO FIRMWARE
                             firmware_info_t* firmware_info = (firmware_info_t*)FWINFO_ADDRESS;
+                            const uint8_t packet_length = (temp_packet.length & 0x0f) + 1;
                             uint8_t bytes_to_pad = 16 - (firmware_info->length % 16);
+
                             if (bytes_to_pad == 0) {
                                 bytes_to_pad = 16;
                             }
-                            if(dataDecrypted != 0xff) bl_flash_write(MAIN_APP_START_ADDRESS + bytes_written, (uint8_t*)dataDecrypted, AES_BLOCK_SIZE);
-                            else bl_flash_write(MAIN_APP_START_ADDRESS + bytes_written, temp_packet.data, packet_length);
-                            bytes_written += packet_length;
+                            
+                            memcpy(dataToDecrypt, temp_packet.data, AES_BLOCK_SIZE); //da uart pro bloco atual
+                            //variavel apra armazenar bloco descriptografado
+
+                            descriptografarBlocoAtual(dataToDecrypt, prevBlock, round_keys, dataDecrypted, offset);
+                            if(offset >= (SIGNATURE_ADDRESS - MAIN_APP_START_ADDRESS) + sizeof(firmware_info_t)) memcpy(prevBlock, dataToDecrypt, AES_BLOCK_SIZE); //do bloco atual pro anterior
+
+                            offset += AES_BLOCK_SIZE;
+                            // IMPLEMENTAR X BYTES RECEBIDOS NO FIRMWARE
                             simple_timer_reset(&timer1);
 
-                            if(bytes_written - bytes_to_pad >= fw_length)
+                            if(bytes_written + bytes_to_pad >= firmware_info->length)
                             {
+                                bl_flash_write(MAIN_APP_START_ADDRESS + bytes_written, dataDecrypted, sizeof(dataDecrypted));
                                 comms_create_single_byte_packet(&temp_packet, BL_PACKET_UPDATE_SUCESSFUL_DATA0);
                                 comms_write(&temp_packet);
                                 stateBL = BL_State_Done;
                             }
                             else
                             {
+                                bl_flash_write(MAIN_APP_START_ADDRESS + bytes_written, dataDecrypted, sizeof(dataDecrypted));
+                                bytes_written += packet_length;
                                 comms_create_single_byte_packet(&temp_packet, BL_PACKET_READY_FOR_DATA_DATA0);
                                 comms_write(&temp_packet);
                             }
@@ -530,7 +491,7 @@ simple_timer_setup(&timer1, DEFAULT_TIMEOUT, false);
                         {
                             const uint8_t packet_length = (temp_packet.length & 0x0f) + 1;
                             bl_flash_write(MAIN_APP_START_ADDRESS + bytes_written, temp_packet.data, packet_length);
-                            bytes_written += packet_length;
+                            
                             simple_timer_reset(&timer1);
 
                             if(bytes_written >= fw_length)

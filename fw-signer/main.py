@@ -83,7 +83,7 @@ else:
         f.close()
 
     #USANDO COMANDO DE CRIPTOGRAFIA NA IMAGEM
-    openssl_command = f"openssl dec -aes-128-cbc -nosalt -K {signing_key} -iv {zeroed_iv} -in {signing_image_filename} -out {encrypted_filename_to_upload}"
+    openssl_command = f"openssl enc -aes-128-cbc -nosalt -K {signing_key} -iv {zeroed_iv} -in {signing_image_filename} -out {encrypted_filename_to_upload}"
     subprocess.call(openssl_command.split(" "))
 
     with open(encrypted_filename_to_upload, "rb") as f:

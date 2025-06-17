@@ -38,12 +38,14 @@ struct.pack_into("<I", fw_image, FWINFO_OFFSET + FWINFO_VERSION_OFFSET, version_
 
 if(isCrypted == 0):
     #CRIANDO IMAGEM PARA CRIPTOGRAFAR
-    signing_image = fw_image[FWINFO_OFFSET:FWINFO_OFFSET + AES_BLOCK_SIZE] # firmware info
-    signing_image += fw_image[:FWINFO_OFFSET] # vector table
+    signing_image = fw_image[:FWINFO_OFFSET] # vector table
+    signing_image += fw_image[FWINFO_OFFSET:FWINFO_OFFSET + AES_BLOCK_SIZE] # firmware info
     signing_image += fw_image[FWINFO_OFFSET + AES_BLOCK_SIZE * 2:] #firmware
 
+    firmware = fw_image[FWINFO_OFFSET + AES_BLOCK_SIZE * 2:]
+
     with open(signing_image_filename, "wb") as f:
-        f.write(signing_image)
+        f.write(firmware)
         f.close()
     #USANDO COMANDO DE CRIPTOGRAFIA NA IMAGEM
     openssl_command = f"openssl enc -aes-128-cbc -nosalt -K {signing_key} -iv {zeroed_iv} -in {signing_image_filename} -out {encrypted_filename}"
@@ -59,7 +61,7 @@ if(isCrypted == 0):
         signature_text += f"{byte:02x}"
 
     # os.remove(signing_image_filename)
-    # os.remove(encrypted_filename)
+    os.remove(encrypted_filename)
 
     fw_image[SIGNATURE_OFFSET:SIGNATURE_OFFSET + AES_BLOCK_SIZE] = signature
 

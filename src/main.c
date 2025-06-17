@@ -44,7 +44,7 @@ int main(void)
         while(uart_data_available())
         {
             uint8_t data = uart_read_byte();
-            uart_write_byte(data+2);
+            uart_write_byte(data);
         }
 
         system_delay(2500);

@@ -1,4 +1,3 @@
-import { time } from 'console';
 import { SerialPort } from 'serialport';
 import * as fs from 'fs/promises';
 import * as path from 'path';
@@ -54,6 +53,7 @@ const crc8 = (data: Buffer | Array<number>) =>
     }
     return crc;
 }; 
+
 const crc32 = (data: Buffer, length: number) => {
   let byte;
   let crc = 0xffffffff;
@@ -71,6 +71,7 @@ const crc32 = (data: Buffer, length: number) => {
 
   return (~crc) >>> 0;
 };
+
 const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 class Logger {
@@ -109,6 +110,7 @@ computeCrc() {
 }
 
 toBuffer() {
+  console.log(Buffer.concat([ Buffer.from([this.length]), this.data, Buffer.from([this.crc]) ]));
   return Buffer.concat([ Buffer.from([this.length]), this.data, Buffer.from([this.crc]) ]);
 }
 
@@ -134,7 +136,7 @@ static createSingleBytePacket(byte: number) {
 }
 
 }
-
+  
 const uart = new SerialPort({ path: serialPath, baudRate });
 
 let packets: Packet[] = [];
@@ -278,7 +280,7 @@ else
   await waitForSingleBytePacket(BL_PACKET_DEVICE_ID_REQ_DATA0);
   Logger.success('Device ID request received');
 
-  const deviceId = fwImage[FWINFO_DEVICE_ID_OFFSET];  //VER MELHOR COMO FUNCIONA ISSO
+  const deviceId = fwImage[FWINFO_DEVICE_ID_OFFSET];  
   const deviceIDPacket = new Packet(2, Buffer.from([BL_PACKET_DEVICE_ID_RES_DATA0, deviceId]));
   writePacket(deviceIDPacket.toBuffer());
   Logger.info(`Responding with device ID 0x${deviceId.toString(16)}`);

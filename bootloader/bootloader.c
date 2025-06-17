@@ -100,34 +100,33 @@ static void aes_cbc_mac_step(AES_Block_t aes_state, AES_Block_t prev_state, cons
   memcpy(prev_state, aes_state, AES_BLOCK_SIZE);
 }
 
-static void aes_cbc_mac_step_decrypt(AES_Block_t aes_state, AES_Block_t prev_state, const AES_Block_t *key_schedule) {
+static void DecryptLogic(AES_Block_t aes_state, AES_Block_t prev_state, const AES_Block_t *key_schedule) {
   AES_DecryptBlock(aes_state, key_schedule);  
   for (uint8_t i = 0; i < AES_BLOCK_SIZE; i++) {
     ((uint8_t*)aes_state)[i] ^= ((uint8_t*)prev_state)[i];  
   }
 }
 
-void descriptografarBlocoAtual(const uint8_t* data, const uint8_t* prev, const AES_Block_t* key_schedule, uint8_t* out, uint32_t offset)
+static void DecryptOutputBlock(const uint8_t* data, const uint8_t* prev, const AES_Block_t* key_schedule, uint8_t* out, uint32_t offsetMem)
 {
-    AES_Block_t aux;
-    AES_Block_t aes_state;
-    AES_Block_t prev_state;
+    AES_Block_t aux; //crypted block
+    AES_Block_t aes_state; //output block (decrypted)
+    AES_Block_t prev_state; //prev block (iv or last crypted block)
 
     memcpy(aux, data, sizeof(AES_Block_t));
     memcpy(aes_state, aux, sizeof(AES_Block_t));
 
      
-    if(offset >= (SIGNATURE_ADDRESS - MAIN_APP_START_ADDRESS) + sizeof(firmware_info_t)) 
+    if(offsetMem >= (SIGNATURE_ADDRESS - MAIN_APP_START_ADDRESS) + sizeof(firmware_info_t)) 
     {
         memcpy(prev_state, prev, sizeof(AES_Block_t));
-        aes_cbc_mac_step_decrypt(aes_state, prev_state, key_schedule);
+        DecryptLogic(aes_state, prev_state, key_schedule);
     }
     
 
     memcpy(out, aes_state, sizeof(AES_Block_t));         
 
 }
-
 
 static bool validate_firmware_image(void) {
     firmware_info_t* firmware_info = (firmware_info_t*)FWINFO_ADDRESS;
@@ -141,8 +140,6 @@ static bool validate_firmware_image(void) {
         return false;
     }
 
-    if(isFWCrypted) return true;
-
     AES_Block_t round_keys[NUM_ROUND_KEYS_128];
     AES_KeySchedule128(secret_key, round_keys);
 
@@ -153,24 +150,27 @@ static bool validate_firmware_image(void) {
     
     uint8_t bytes_to_pad = 16 - (firmware_info->length % 16);
 
-        if (bytes_to_pad == 0) {
-            bytes_to_pad = 16;
-        }
-        aes_cbc_mac_step(aes_state, prev_state, round_keys);
+    if(isFWCrypted || firmware_info->sentinel == 4294967295) 
+    {
+        return true;
+    }
 
-        uint32_t offset1 = 0;
-        while (offset1 < firmware_info->length) {
+    if (bytes_to_pad == 0) {
+        bytes_to_pad = 16;
+    }
+
+    uint32_t offset1 = 0;
+    while (offset1 < firmware_info->length) {
             // Are we are the point where we need to skip the info and signature sections?
-            if (offset1 == (FWINFO_ADDRESS - MAIN_APP_START_ADDRESS)) {
-            offset1 += AES_BLOCK_SIZE * 2;
-            continue;
-            }
+        while (offset1 <= (FWINFO_ADDRESS - MAIN_APP_START_ADDRESS) + AES_BLOCK_SIZE) {
+            offset1 += AES_BLOCK_SIZE;
+        }
 
-            if (firmware_info->length - offset1 > AES_BLOCK_SIZE) {
+        if (firmware_info->length - offset1 > AES_BLOCK_SIZE) {
             // The regular case
             memcpy(aes_state, (void*)(MAIN_APP_START_ADDRESS + offset1), AES_BLOCK_SIZE);
             aes_cbc_mac_step(aes_state, prev_state, round_keys);
-            } else {
+        } else {
             // The case of padding
             if (bytes_to_pad == 16) {
                 // Add a whole extra block of padding
@@ -184,13 +184,13 @@ static bool validate_firmware_image(void) {
                 memset((void*)(aes_state) + (AES_BLOCK_SIZE - bytes_to_pad), bytes_to_pad, bytes_to_pad);
                 aes_cbc_mac_step(aes_state, prev_state, round_keys);
             }
-            }
-
-            offset1 += AES_BLOCK_SIZE;
         }
 
-        return memcmp(signature, aes_state, AES_BLOCK_SIZE) == 0;
+            offset1 += AES_BLOCK_SIZE;
     }
+
+        return memcmp(signature, aes_state, AES_BLOCK_SIZE) == 0;
+}
 
 static void bootloading_fail(void)
 {
@@ -254,26 +254,33 @@ static bool is_fw_length_packet(const comms_packet_t* packet)
 static void gpio_bootloader_setup(void)
 {
     gpio_mode_setup(GPIO_BOOTLOADER_PORT, GPIO_MODE_INPUT, GPIO_PUPD_NONE, GPIO_BOOTLOADER_PIN);
+    gpio_mode_setup(LED_PORT, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, LED_PIN);
 }
 
 static void gpio_bootloader_teardown(void)
 {
     gpio_mode_setup(GPIO_BOOTLOADER_PORT, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, GPIO_BOOTLOADER_PIN);
-    rcc_periph_clock_disable(RCC_GPIOC); 
+    rcc_periph_clock_disable(RCC_GPIOC);
+
+    gpio_mode_setup(LED_PORT, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, LED_PIN);
+    rcc_periph_clock_disable(RCC_GPIOA);  
 }
 
 int main(void)
 {
-clock_setup();
-gpio_bootloader_setup();
-system_setup();
-usart_setup();
-comms_setup();
+    //liga os periféricos e pinos
+    clock_setup();
+    gpio_bootloader_setup();
+    system_setup();
+    usart_setup();
+    comms_setup();
 
-simple_timer_setup(&timer1, DEFAULT_TIMEOUT, false); 
+    gpio_set(LED_PORT, LED_PIN); //forma visual de confirma que está no bootloader
 
-    while(stateBL != BL_State_Done && gpio_get(GPIO_BOOTLOADER_PORT, GPIO_BOOTLOADER_PIN))
-    {
+    simple_timer_setup(&timer1, DEFAULT_TIMEOUT, false); //configura o timer de estouro unico que serve apenas pra 
+
+    while(stateBL != BL_State_Done && gpio_get(GPIO_BOOTLOADER_PORT, GPIO_BOOTLOADER_PIN)) //enquanto o processo de transferencia nao for finalizado ou o botao
+    {   //de bootloader estiver ativo
 
         if(stateBL == BL_State_Sync)
         {
@@ -307,7 +314,8 @@ simple_timer_setup(&timer1, DEFAULT_TIMEOUT, false);
             }
             continue;
         }
-        comms_update();
+        
+        comms_update(); //le e valida o pacote recebido
 
         AES_Block_t round_keys[NUM_ROUND_KEYS_128]; //round keys
 
@@ -414,7 +422,7 @@ simple_timer_setup(&timer1, DEFAULT_TIMEOUT, false);
                     if (bytes_to_pad == 0) {
                         bytes_to_pad = 16;
                     }
-                    fw_length -= bytes_to_pad;
+                    if(isFWCrypted) fw_length -= bytes_to_pad;
 
                     if(is_fw_length_packet(&temp_packet) && (fw_length <= MAX_FW_LENGTH))
                     {
@@ -441,9 +449,7 @@ simple_timer_setup(&timer1, DEFAULT_TIMEOUT, false);
                 for (uint8_t i = 0; i < AES_BLOCK_SIZE; i++) prevBlock[i] = 0; //garante que o IV está zerado
                 //primeira vez que enviar um bloco, vai ter q ser o IV
                 
-                AES_KeySchedule128(secret_key, round_keys); 
-
-                  
+                AES_KeySchedule128(secret_key, round_keys);  
             } break;
             case BL_State_ReceiveFirmware:
             {
@@ -465,9 +471,11 @@ simple_timer_setup(&timer1, DEFAULT_TIMEOUT, false);
                             memcpy(dataToDecrypt, temp_packet.data, AES_BLOCK_SIZE); //da uart pro bloco atual
                             //variavel apra armazenar bloco descriptografado
 
-                            descriptografarBlocoAtual(dataToDecrypt, prevBlock, round_keys, dataDecrypted, offset);
-                            if(offset >= (SIGNATURE_ADDRESS - MAIN_APP_START_ADDRESS) + sizeof(firmware_info_t)) memcpy(prevBlock, dataToDecrypt, AES_BLOCK_SIZE); //do bloco atual pro anterior
-
+                            DecryptOutputBlock(dataToDecrypt, prevBlock, round_keys, dataDecrypted, offset);
+                            if(offset >= (SIGNATURE_ADDRESS - MAIN_APP_START_ADDRESS) + sizeof(firmware_info_t))
+                            { 
+                                memcpy(prevBlock, dataToDecrypt, AES_BLOCK_SIZE); //do bloco atual pro anterior
+                            }
                             offset += AES_BLOCK_SIZE;
                             // IMPLEMENTAR X BYTES RECEBIDOS NO FIRMWARE
                             simple_timer_reset(&timer1);
@@ -491,7 +499,7 @@ simple_timer_setup(&timer1, DEFAULT_TIMEOUT, false);
                         {
                             const uint8_t packet_length = (temp_packet.length & 0x0f) + 1;
                             bl_flash_write(MAIN_APP_START_ADDRESS + bytes_written, temp_packet.data, packet_length);
-                            
+                            bytes_written += packet_length;
                             simple_timer_reset(&timer1);
 
                             if(bytes_written >= fw_length)
@@ -512,6 +520,13 @@ simple_timer_setup(&timer1, DEFAULT_TIMEOUT, false);
                     check_for_timeout();
                 }
         } break;
+        case BL_State_Done:
+        {
+            gpio_clear(LED_PORT, LED_PIN);
+            // flash_program_option_bytes();
+            // flash_clear_status_flags();
+            // flash_lock_option_bytes();
+        } break;
         default:
         {
             stateBL = BL_State_Sync;
@@ -519,12 +534,13 @@ simple_timer_setup(&timer1, DEFAULT_TIMEOUT, false);
     }
     }
 
-    system_delay(150); //JEITO BURRO DE FAZER COM QUE O PACOTE DE UPDATE SUCESSFUL CHEGUE SEM COM QUE A USART SEJA DESLIGADA ANTES
+    system_delay(150); //JEITO BURRO DE FAZER COM QUE O PACOTE DE UPDATE SUCESSFULL CHEGUE SEM COM QUE A USART SEJA DESLIGADA ANTES
+    //desliga os perifericos e pinos usados
     uart_teardown();
     gpio_bootloader_teardown();
     system_teardown();
     
-    if(validate_firmware_image())
+    if(validate_firmware_image()) //sempre valida o firmware antes de entrar nele, se tiver errado ele retorna false
     {
         jump_to_main();
     }
@@ -533,7 +549,6 @@ simple_timer_setup(&timer1, DEFAULT_TIMEOUT, false);
         //reset device
         scb_reset_core();
     }
-    //NUNCA RETORNA
+
     return 0;
 }
-
